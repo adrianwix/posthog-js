@@ -1893,7 +1893,61 @@ const add_dom_loaded_handler = function () {
     _register_event(window, 'load', dom_loaded_handler, true)
 }
 
+function add_polyfill_if_needed(onload: () => void): void {
+    // To ensure we can use modern JS features, we polyfill them with the
+    // `babel-polyfill` bundle. This is a large bundle, so we only load it
+    // on a subset of browsers. Specifically we polyfill on:
+    //
+    // - IE 11 and below
+    // - Firefox 46 and below
+    // - Edge 13 and below
+    //
+    // For all other browsers we assume they support modern JS features. This
+    // will mean that the majority of users will not have to download the
+    // polyfill bundle, and hopefully only a small subset of users will have to
+    // incur the increased download cost.
+    //
+    // An alternative to doing this would be to use the babel transpiler to
+    // inject polyfills directly into the code, but that would increase the
+    // size of the bundle for all browsers.
+    //
+    // For reference, we tried to use core-js loaded by @babel/preset-env to
+    // only use polyfills when needed i.e. specifically using {useBuildIns:
+    // 'usage'} config, but this resulted in a 25% increase in bundle size.
+    // There was some duplication with the manual polyfills we have added in
+    // `utils.ts`, so we tried to use the core-js/modules/es.promise lib
+    // directly, but this still introduced a considerable increase in size. If
+    // you like pain, have a look at the commit history on
+    // https://github.com/PostHog/posthog-js/pull/586 for more details.
+    //
+    // Note that we use core-js as our polyfill library via jsdelivr
+    // (https://cdn.jsdelivr.net/npm/core-js-bundle@3.29.1/minified.min.js),
+    // which caches the polyfill bundle on their CDN. Assuming users on old
+    // browsers have already visited a site using this polyfill from the CDN,
+    // they should not have to download it again.
+
+    const is_old_ie = navigator.userAgent.indexOf('MSIE ') > -1 || navigator.userAgent.indexOf('Trident/') > -1
+    const is_old_firefox =
+        navigator.userAgent.indexOf('Firefox/') > -1 && navigator.userAgent.indexOf('Firefox/4') === -1
+    const is_old_edge = navigator.userAgent.indexOf('Edge/') > -1 && navigator.userAgent.indexOf('Edge/14') === -1
+
+    if (is_old_ie || is_old_firefox || is_old_edge) {
+        const script = document.createElement('script')
+        script.src = 'https://cdn.jsdelivr.net/npm/core-js-bundle@3.29.1/minified.min.js'
+        script.onload = onload
+        document.head.appendChild(script)
+    } else {
+        onload()
+    }
+}
+
 export function init_from_snippet(): void {
+    add_polyfill_if_needed(() => {
+        _init_from_snippet()
+    })
+}
+
+function _init_from_snippet(): void {
     init_type = InitType.INIT_SNIPPET
     if (_isUndefined((window as any).posthog)) {
         ;(window as any).posthog = []
