@@ -98,7 +98,7 @@ export class WebPerformanceObserver {
         }
         try {
             this.observer = new PerformanceObserver((list) => {
-                list.getEntries().forEach((entry) => {
+                (list || []).getEntries().forEach((entry) => {
                     this._capturePerformanceEvent(entry)
                 })
             })
